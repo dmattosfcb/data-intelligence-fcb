@@ -1,0 +1,140 @@
+{
+  "cells": [
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "view-in-github",
+        "colab_type": "text"
+      },
+      "source": [
+        "<a href=\"https://colab.research.google.com/github/dmattosfcb/data-intelligence-fcb/blob/main/merge_excel_files\" target=\"_parent\"><img src=\"https://colab.research.google.com/assets/colab-badge.svg\" alt=\"Open In Colab\"/></a>"
+      ]
+    },
+    {
+      "cell_type": "code",
+      "source": [
+        "# Instale as bibliotecas necessárias\n",
+        "!pip install gcsfs tqdm\n"
+      ],
+      "metadata": {
+        "id": "ngKH4QE_jAKU"
+      },
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "source": [
+        "\n",
+        "# Importe as bibliotecas\n",
+        "import pandas as pd\n",
+        "import gcsfs\n",
+        "from tqdm import tqdm\n",
+        "\n",
+        "# Autentique no GCP\n",
+        "from google.colab import auth\n",
+        "auth.authenticate_user()\n",
+        "\n",
+        "# Crie o cliente GCS\n",
+        "fs = gcsfs.GCSFileSystem(project='fcb-stellantis')\n",
+        "\n",
+        "# Os caminhos dos seus arquivos no GCS\n",
+        "paths = ['gs://rev_fiat_xlsx/rev_fiat/rev_fiat_001.xlsx', 'gs://rev_fiat_xlsx/rev_fiat/rev_fiat_002.xlsx',\n",
+        "         'gs://rev_fiat_xlsx/rev_fiat/rev_fiat_003.xlsx', 'gs://rev_fiat_xlsx/rev_fiat/rev_fiat_004.xlsx',\n",
+        "         'gs://rev_fiat_xlsx/rev_fiat/rev_fiat_005.xlsx']\n",
+        "\n",
+        "# As colunas que você deseja manter\n",
+        "columns = ['VIS', 'VIN', 'Canal Venda', 'Modelo', 'Grupo Canal de Vendas',\n",
+        "           'Data 1ª Revisão', 'Data 2ª Revisão', 'Data 3ª Revisão', 'Data 4ª Revisão', 'Data 5ª Revisão',\n",
+        "           'Data 1ª', 'Data 2ª', 'Data 3ª', 'Data 4ª', 'Data 5ª']\n",
+        "\n",
+        "# Mapeamento para renomear as colunas\n",
+        "rename_map = {\n",
+        "    'Data 1ª Revisão': 'data_1_rev',\n",
+        "    'Data 2ª Revisão': 'data_2_rev',\n",
+        "    'Data 3ª Revisão': 'data_3_rev',\n",
+        "    'Data 4ª Revisão': 'data_4_rev',\n",
+        "    'Data 5ª Revisão': 'data_5_rev',\n",
+        "    'Data 1ª': 'data_1_rev',\n",
+        "    'Data 2ª': 'data_2_rev',\n",
+        "    'Data 3ª': 'data_3_rev',\n",
+        "    'Data 4ª': 'data_4_rev',\n",
+        "    'Data 5ª': 'data_5_rev'\n",
+        "}\n",
+        "\n",
+        "# Crie um DataFrame vazio para armazenar todos os dados\n",
+        "all_data = pd.DataFrame()\n",
+        "\n",
+        "# Faça um loop pelos caminhos dos arquivos e leia cada arquivo em um DataFrame. Em seguida, concatene-os.\n",
+        "for path in tqdm(paths, desc=\"Loading files\", unit=\"file\"):\n",
+        "    with fs.open(path) as f:\n",
+        "        df = pd.read_excel(f, usecols=lambda x: x in columns, engine='openpyxl')\n",
+        "        df = df.rename(columns=rename_map)\n",
+        "        date_cols = [col for col in df.columns if 'data_' in col]\n",
+        "        for date_col in date_cols:\n",
+        "            df[date_col] = pd.to_datetime(df[date_col], errors='coerce').dt.date\n",
+        "        all_data = pd.concat([all_data, df])\n",
+        "\n",
+        "# Exibe uma prévia do DataFrame\n",
+        "print(all_data.head())\n",
+        "\n",
+        "# Escreva o DataFrame em um arquivo CSV no GCS\n",
+        "with fs.open('gs://rev_fiat_xlsx/merged_data.csv', 'w') as f:\n",
+        "    all_data.to_csv(f, index=False)\n",
+        "\n",
+        "print(\"The merged data has been written to 'gs://rev_fiat_xlsx/merged_data.csv' successfully.\")\n"
+      ],
+      "metadata": {
+        "colab": {
+          "base_uri": "https://localhost:8080/"
+        },
+        "id": "naDN_DqKch2e",
+        "outputId": "400a5965-5554-49c9-cdf1-284fd5a7a55d"
+      },
+      "execution_count": 4,
+      "outputs": [
+        {
+          "output_type": "stream",
+          "name": "stderr",
+          "text": [
+            "Loading files: 100%|██████████| 5/5 [14:44<00:00, 176.87s/file]\n"
+          ]
+        },
+        {
+          "output_type": "stream",
+          "name": "stdout",
+          "text": [
+            "        VIS                VIN Modelo   Canal Venda    Grupo Canal de Vendas  \\\n",
+            "0  JKB73699  988226165JKB73699   TORO  VENDA DIRETA                 FROTISTA   \n",
+            "1  JKB67646  98822611XJKB67646   TORO  VENDA DIRETA                 FROTISTA   \n",
+            "2  JKB73500  988226165JKB73500   TORO  VENDA DIRETA  VAREJO + SMALL BUSINESS   \n",
+            "3  JKB73760  988226175JKB73760   TORO  VENDA DIRETA  VAREJO + SMALL BUSINESS   \n",
+            "4  JKB69631  988226165JKB69631   TORO  VENDA DIRETA  VAREJO + SMALL BUSINESS   \n",
+            "\n",
+            "   data_1_rev  data_2_rev data_3_rev  data_4_rev data_5_rev  \n",
+            "0  2019-01-04         NaT        NaT  2020-02-11        NaT  \n",
+            "1  2018-06-07  2018-10-23        NaT         NaT        NaT  \n",
+            "2  2019-09-12         NaT        NaT         NaT        NaT  \n",
+            "3  2019-02-04         NaT        NaT  2020-07-25        NaT  \n",
+            "4  2018-05-22         NaT        NaT  2018-09-04        NaT  \n",
+            "The merged data has been written to 'gs://rev_fiat_xlsx/merged_data.csv' successfully.\n"
+          ]
+        }
+      ]
+    }
+  ],
+  "metadata": {
+    "colab": {
+      "name": "Welcome To Colaboratory",
+      "toc_visible": true,
+      "provenance": [],
+      "include_colab_link": true
+    },
+    "kernelspec": {
+      "display_name": "Python 3",
+      "name": "python3"
+    }
+  },
+  "nbformat": 4,
+  "nbformat_minor": 0
+}
